@@ -1,12 +1,12 @@
-# BoogaPlus
+# boogaPlus
 
-A text-generation-webui extension that enhances chat history management and interaction capabilities.
+A text-generation-webui extension that adds some nice QoL features to the UI.
 
 ## Features
 
 ✨ Currently Implemented:
 - Message History Navigation
-  - Scroll through bot and user messages (cached)
+  - Scroll through bot and user messages (cached edits and regenerations)
   - Retrieves both 'internal' and 'visible' texts post-extension modifications for maximum compatibility
   - Smart detection of "Replace last reply" operations
   - Handles chat renaming and deletion
@@ -27,7 +27,7 @@ A text-generation-webui extension that enhances chat history management and inte
    - Revert to previous chat states
    - Insert messages into history
 5. Chat History Tools
-   - Parse notebook/default format into new history
+   - Parse notebook/default into new history
 6. Advanced Features
    - Auto-impersonation mode (continuous bot self-conversation)
 
@@ -45,15 +45,8 @@ A text-generation-webui extension that enhances chat history management and inte
 
 ## Usage
 
-[Usage instructions to be added]
+Use the UI. That's it!
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-[License information to be added]
-
----
-Last updated: December 20, 2024
+Contributions are welcome! Please feel free to submit a Pull Request. I probably won't be working on this extension in the near future, so please don't hesitate to reach out if you have any questions or suggestions.
