@@ -40,12 +40,6 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
    - Auto-impersonation mode (continuous bot self-conversation)
 7. Integrate into TGWUI (full overlay overhaul into direct message HTML)
 
-## Miscellaneous
-
-- TGWUI Unicode quote detection needs fixing (U+201C “ and U+201D ”)
-  - Quotes saved literally in JSON, not the Unicode entity
-  - Regex matching issues when appending literals or \u201C to quote handling
-
 ## Usage
 
 Use the UI. That's it!
