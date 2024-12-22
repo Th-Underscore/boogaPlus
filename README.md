@@ -18,7 +18,7 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
 
 1. Navigate to your text-generation-webui installation
 2. Clone this repository into the `extensions` folder
-3. Restart text-generation-webui
+3. Launch text-generation-webui
 
 ## Roadmap
 
@@ -50,7 +50,7 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
 
 Use the UI. That's it!
 
-Well, Ctrl+LeftArrow and Ctrl+RightArrow after hovering over a message is a fun shortcut for navigating.
+- Well, Ctrl+LeftArrow and Ctrl+RightArrow after hovering over a message are fun shortcuts for navigating.
 
 ## Known Issues
 

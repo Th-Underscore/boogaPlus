@@ -22,7 +22,6 @@ _history_cache = {'visible': [], 'internal': []}
 def validate_list(lst: List, i: int):
     """Ensure list is properly extended to index i"""
     if len(lst) <= i:
-        print(f"{_GRAY}Extending list from {len(lst)} to {i}{_RESET} {i + 1 - len(lst)} {[None] * (i + 1 - len(lst))}")
         lst.extend([None] * (i + 1 - len(lst)))
 
 def validate_cache(i: int):
@@ -71,7 +70,6 @@ def update_cache(state: Dict) -> bool:
                 contents = f.read()
                 if contents:
                     _history_cache = json.loads(contents)
-                    print(f"{_SUCCESS}Loaded cache: {json.dumps(_history_cache, indent=2)}{_RESET}")
                 else:
                     _history_cache = {'visible': [], 'internal': []}
                     print(f"{_INPUT}Initialized empty cache{_RESET}")
@@ -224,7 +222,6 @@ def handle_send_dummy_message_click(text, state):
     '''
     BOOGAPLUS MONKEY PATCH
     '''
-    print(f"{_HILITE}handle_send_dummy_message_click{_RESET}")
     [history, html, _] = _handle_send_dummy_message_click(text, state)
     append_to_cache(history, state, is_bot=False)
     append_to_cache(history, state, is_bot=True)
