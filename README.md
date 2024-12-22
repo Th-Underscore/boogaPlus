@@ -22,7 +22,7 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
 
 ## Roadmap
 
-🚀 Planned Features:
+📝 Planned Features:
 1. Enhanced Message Selection
    - Click to force-select messages
    - Click-off to force-deselect
@@ -38,6 +38,7 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
    - Parse notebook/default into new history
 6. Advanced Features
    - Auto-impersonation mode (continuous bot self-conversation)
+7. Integrate into TGWUI (full overlay overhaul into direct message HTML)
 
 ## Miscellaneous
 
@@ -50,6 +51,12 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
 Use the UI. That's it!
 
 Well, Ctrl+LeftArrow and Ctrl+RightArrow after hovering over a message is a fun shortcut for navigating.
+
+## Known Issues
+
+- Refreshing the page sometimes causes an internal error (refresh again usually does the trick)
+- New generations require hovering over the message to update
+- Switching tabs doesn't immediately hide the overlay
 
 ## Contributing
 
