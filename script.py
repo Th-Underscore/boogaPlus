@@ -40,12 +40,14 @@ def ui():
     from modules.utils import gradio
     
     with gr.Tab(visible=False, elem_id="bgpl_row") as bgpl_row:  # Allow JavaScript retrieval
+        shared.gradio['bgpl_navigate'] = gr.Button(value="", elem_id="bgpl_navigate")       # navigate button
+        
         # No gr.JSON cuz it's hard to stringify and parse due to its specific structure
         shared.gradio['bgpl_chat_map'] = gr.Textbox(value="[]", elem_id="bgpl_chat_map")    # message indices and types
         shared.gradio['bgpl_chat_data'] = gr.Textbox(value="[]", elem_id="bgpl_chat_data")  # message metadata
         shared.gradio['bgpl_chat_idx'] = gr.Number(value=0, elem_id="bgpl_chat_idx")        # message location in chat UI
         shared.gradio['bgpl_direction'] = gr.Textbox(value="", elem_id="bgpl_direction")    # direction input ('left', 'right')
-    # [[0, 1], [1, 0], [1, 1]] ... [[]]
+
     # Get positions on hover
     shared.gradio['bgpl_chat_idx'].change(
         fn=retrieve_message_positions,
@@ -68,7 +70,7 @@ def ui():
     )
     
     # Navigate through positions
-    shared.gradio['bgpl_direction'].change(
+    shared.gradio['bgpl_navigate'].click(
         fn=navigate,
         inputs=gradio(
             'bgpl_chat_map',        # all message locations
@@ -137,11 +139,10 @@ async def retrieve_message_positions(chat_map: str, chat_data: str, chat_index: 
         cache.update_cache(state)
         
         min_index = len(chat_data)
-        if min_index <= chat_index:
-            print(f"{_GRAY}Extending chat data from {len(chat_data)} to {chat_index}{_RESET} {chat_index + 1 - min_index}")
-            to_extend = chat_index + 1 - min_index
+        max_index = len(chat_map) - 1
+        if min_index <= max_index:
+            to_extend = max_index + 1 - min_index
             chat_data.extend(get_message_positions(i, msg_type, history) for [i, msg_type] in chat_map[-to_extend:])
-            print(f"{_SUCCESS}{chat_data}{_RESET}")
         else:
             [i, msg_type] = chat_map[chat_index]
             chat_data[chat_index] = get_message_positions(i, msg_type, history)

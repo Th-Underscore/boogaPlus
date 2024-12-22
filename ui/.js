@@ -4,7 +4,7 @@ let _start = 0;
 let selectedMessageIndex = null;
 let whenLastSelection = null;
 let whenLastNavHover = null;
-let isNavDisplayed = false;
+let isNavDisplayed = false;  // Currently unused
 
 function createNavOverlay() {
     console.log("Creating boogaPlus nav overlay...");
@@ -148,6 +148,7 @@ function navigateHistory(direction) {
     if (dirComponent) {
         // Set direction and navigate
         updateGradioInput(dirComponent, direction);
+        gradioApp().querySelector('#bgpl_navigate')?.click();
     }
 }
 
@@ -265,7 +266,7 @@ function setupMessageHandlers() {
                 msg.addEventListener('mousemove', () => {
                     if (selectedMessageIndex !== index) {
                         selectMessage(messageBody, index);
-                    } else if (isNavDisplayed) {
+                    } else if (updateNavInfo()) {
                         updateNavOverlay(messageBody);
                         activateNavOverlay(navContent);
                         startDeactivateNavOverlay(navContent, 500);
