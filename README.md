@@ -12,6 +12,14 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
   - Handles chat renaming and deletion
   - Full support for blank messages
 
+<sub>considering switching to full custom JS cache tracking due to Gradio latency (150ms+ !!!)</sub>
+
+## Installation
+
+1. Navigate to your text-generation-webui installation
+2. Clone this repository into the `extensions` folder
+3. Restart text-generation-webui
+
 ## Roadmap
 
 🚀 Planned Features:
@@ -37,15 +45,11 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
   - Quotes saved literally in JSON, not the Unicode entity
   - Regex matching issues when appending literals or \u201C to quote handling
 
-## Installation
-
-1. Navigate to your text-generation-webui installation
-2. Clone this repository into the `extensions` folder
-3. Restart text-generation-webui
-
 ## Usage
 
 Use the UI. That's it!
+
+Well, Ctrl+LeftArrow and Ctrl+RightArrow after hovering over a message is a fun shortcut for navigating.
 
 ## Contributing
 
