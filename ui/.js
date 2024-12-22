@@ -1,7 +1,10 @@
-let selectedMessageIndex = null;
-let selectedId = null;
-let selectedElement = null;
 let setupAttempts = 0;
+let _start = 0;
+
+let selectedMessageIndex = null;
+let whenLastSelection = null;
+let whenLastNavHover = null;
+let isNavDisplayed = false;
 
 function createNavOverlay() {
     console.log("Creating boogaPlus nav overlay...");
@@ -19,20 +22,54 @@ function createNavOverlay() {
         </div>
     `;
     
-    // Add click handlers after creating elements
-    const leftNav = navContainer.querySelector('.bgpl-nav-left');
-    const rightNav = navContainer.querySelector('.bgpl-nav-right');
-    
+    const navContent = navContainer.querySelector('.bgpl-nav-content');
+    navContent.addEventListener('mouseenter', () => activateNavOverlay(navContent));
+    navContent.addEventListener('mouseleave', () => startDeactivateNavOverlay(navContent));
+
+    const leftNav = navContent.querySelector('.bgpl-nav-left');
+    const rightNav = navContent.querySelector('.bgpl-nav-right');
     leftNav.addEventListener('click', () => navigateHistory('left'));
     rightNav.addEventListener('click', () => navigateHistory('right'));
     
+    // const parent = document.querySelector('#chat');`
     document.body.appendChild(navContainer);
     console.log("Nav overlay created with elements:", {
         container: !!navContainer,
-        posInfo: !!navContainer.querySelector('.bgpl-nav-pos'),
+        content: !!navContent,
+        posInfo: !!navContent.querySelector('.bgpl-nav-pos'),
         leftNav: !!leftNav,
         rightNav: !!rightNav
     });
+}
+
+function activateNavOverlay(navContent) {
+    if (navContent) {
+        whenLastNavHover = null;
+        navContent.removeAttribute('hidden');
+        navContent.setAttribute('activated', '');
+    }
+}
+
+function startDeactivateNavOverlay(navContent, deactivateDelay=750, hideDelay=3000) {
+    if (navContent) {
+        const start = Date.now();
+        whenLastNavHover = start;
+
+        if (deactivateDelay) {
+            setTimeout(() => {
+                if (whenLastNavHover === start) {
+                    navContent.removeAttribute('activated');
+                }
+            }, deactivateDelay);
+        }
+        if (hideDelay) {
+            setTimeout(() => {
+                if (whenLastNavHover === start) {
+                    navContent.setAttribute('hidden', '');
+                }
+            }, hideDelay);
+        }
+    }
 }
 
 function updateNavOverlay(element) {
@@ -46,64 +83,71 @@ function updateNavOverlay(element) {
     
     // Position the nav container under the message
     navContainer.style.top = `${rect.bottom}px`;
-    navContainer.style.left = `${rect.left}px`;
-    navContainer.style.width = `${rect.width}px`;
-    navContainer.style.display = 'block';
+    navContainer.style.left = `${rect.right}px`;
 }
 
-function updateNavInfo() {
-    const totalPosInput = gradioApp().querySelector('#bgpl_total_pos input[type="number"]');
-    const totalPos = parseInt(totalPosInput.value) || 1;
-    if (totalPos > 0) {
-        const currentPosInput = gradioApp().querySelector('#bgpl_current_pos input[type="number"]');
-        const currentPos = parseInt(currentPosInput.value) || 0;
+function updateNavInfo(chatDataJSON=null) {
+    chatDataJSON = chatDataJSON ?? gradioApp().querySelector('#bgpl_chat_data textarea');
+    if (!chatDataJSON) return isNavDisplayed = false;
+    const chatData = JSON.parse(chatDataJSON.value);
+    const [currentPos, totalPos] = chatData[selectedMessageIndex] || [0, 0];
 
-        const posInfo = document.querySelector('.bgpl-nav-pos');
-        const leftArrow = document.querySelector('.bgpl-nav-left .bgpl-nav-arrow');
-        const rightArrow = document.querySelector('.bgpl-nav-right .bgpl-nav-arrow');
-        
+    const navContainer = document.querySelector('.bgpl-nav-container');
+    if (!navContainer) return isNavDisplayed = false;
+
+    if (totalPos > 1) {
+        const posInfo = navContainer.querySelector('.bgpl-nav-pos');
+        const leftArrow = navContainer.querySelector('.bgpl-nav-left');
+        const rightArrow = navContainer.querySelector('.bgpl-nav-right');
         if (posInfo && leftArrow && rightArrow) {
+            navContainer.style.display = 'block';
             posInfo.textContent = `${currentPos + 1}/${totalPos}`;
-            leftArrow.style.visibility = currentPos > 0 ? 'visible' : 'hidden';
-            rightArrow.style.visibility = currentPos < totalPos - 1 ? 'visible' : 'hidden';
             
-            const container = document.querySelector('.bgpl-nav-container');
-            if (container) {
-                container.style.display = totalPos > 1 ? 'block' : 'none';
-            }
+            currentPos > 0 ? leftArrow.setAttribute('activated', '') : leftArrow.removeAttribute('activated');
+            currentPos < totalPos - 1 ? rightArrow.setAttribute('activated', '') : rightArrow.removeAttribute('activated');
+            return isNavDisplayed = true;
         }
     }
+    navContainer.style.display = 'none';
+    return isNavDisplayed = false;
 }
 
 function setupPositionObserver() {
-    const currentPosInput = gradioApp().querySelector('#bgpl_current_pos input[type="number"]');
-    if (!currentPosInput) return;
-    const totalPosInput = gradioApp().querySelector('#bgpl_total_pos input[type="number"]');
-    if (!totalPosInput) return;
+    const chatDataJSON = gradioApp().querySelector('#bgpl_chat_data textarea');
+    if (!chatDataJSON) return;
 
-    // Use input and change events instead of MutationObserver
+    // Use input and change events (MutationObserver doesn't work for direct Gradio changes)
     const updateHandler = () => {
+        const chatDataJSON = gradioApp().querySelector('#bgpl_chat_data textarea');
+        const chatData = JSON.parse(chatDataJSON.value);
+        const [currentPos, totalPos] = chatData[selectedMessageIndex] || [0, 0];
+
         const navContainer = document.querySelector('.bgpl-nav-container');
-        if (!parseInt(totalPosInput.value) && navContainer) navContainer.style.display = 'none';
-        else updateNavInfo();
+        if (navContainer && totalPos < 2) {
+            navContainer.style.display = 'none';
+        }
+        else {
+            const messages = document.querySelectorAll('#chat .messages .message');
+            const element = messages[selectedMessageIndex].querySelector('.message-body');
+            if (element) {
+                updateNavInfo(chatDataJSON);
+                // updateNavOverlay(element);
+                // Can be annoying when spam-clicking, tho it looks cool
+            }
+            setupMessageHandlers();
+        }
     };
 
     // Listen for both input and change events
-    currentPosInput.addEventListener('change', updateHandler);
-    totalPosInput.addEventListener('change', updateHandler);
+    chatDataJSON.addEventListener('change', updateHandler);
 }
 
 function navigateHistory(direction) {
     if (selectedMessageIndex === null) return;  // Don't navigate if no message is selected
-    
-    const btn = gradioApp().querySelector('#bgpl_navigate');
     const dirComponent = gradioApp().querySelector('#bgpl_direction textarea');
-    
-    if (btn && dirComponent) {
+    if (dirComponent) {
         // Set direction and navigate
-        updateInput(dirComponent, direction);        
-        // Small delay to ensure values are updated
-        btn.click();
+        updateGradioInput(dirComponent, direction);
     }
 }
 
@@ -112,6 +156,7 @@ function buildMessageMap() {
     const messageMap = [];
     let historyIndex = 0;
     let lastType = null;
+
 
     messages.forEach((msg) => {
         const isUser = msg.querySelector('.circle-you') !== null;
@@ -127,59 +172,63 @@ function buildMessageMap() {
         lastType = currentType;
     });
 
+    const chatMapJSON = gradioApp().querySelector('#bgpl_chat_map textarea');
+    if (chatMapJSON) {
+        updateGradioInput(chatMapJSON, JSON.stringify(messageMap));
+    }
+
     return messageMap;
 }
 
-function selectMessage(element, domIndex, id) {
+function selectMessage(element, domIndex) {
     // Remove previous selection
-    deselectMessage();
+    deselectMessages();
 
     // Add selection to clicked message
     if (element) {
         selectedMessageIndex = domIndex;
-        selectedId = id;
-        selectedElement = element;
-        selectedElement.classList.add('bgpl-selected-msg');
+        element.classList.add('bgpl-selected-msg');
+
+        const navContent = document.querySelector('.bgpl-nav-content');
+        activateNavOverlay(navContent);
+        startDeactivateNavOverlay(navContent, 750);
 
         // Get the history index and message type from our map
         const messageMap = buildMessageMap();
-        if (domIndex >= 0 && domIndex < messageMap.length) {
-            const [historyIndex, messageType] = messageMap[domIndex];
-            
-            // Update Gradio components
-            const indexInput = gradioApp().querySelector('#bgpl_history_index input[type="number"]');
-            const typeInput = gradioApp().querySelector('#bgpl_msg_type input[type="number"]');
-            
-            if (indexInput && typeInput) {
-                updateInput(indexInput, historyIndex);
-                updateInput(typeInput, messageType);
-                
-                // Trigger the change event to update positions
-                indexInput.dispatchEvent(new Event('change', { bubbles: true }));
-                
-                // Update navigation overlay position
-                updateNavOverlay(element);
+        if (domIndex >= 0 && domIndex < messageMap.length) {            
+            // Call Gradio input update
+            const indexInput = gradioApp().querySelector('#bgpl_chat_idx input[type="number"]');
+            if (indexInput) {
+                const start = Date.now();
+                whenLastSelection = start;
+                setTimeout(() => { 
+                    if (whenLastSelection === start) {
+                        updateGradioInput(indexInput, domIndex);
+                    }
+                }, 250);
             }
         } else {
             console.error("Message index out of range:", domIndex, messageMap);
         }
 
-        updateNavInfo();
+        if (updateNavInfo()) {
+            updateNavOverlay(element);
+        }
     }
 }
 
-function deselectMessage() {
+function deselectMessages() {
     document.querySelectorAll('.bgpl-selected-msg').forEach(el => {
         el.classList.remove('bgpl-selected-msg');
     });
     selectedMessageIndex = null;
     selectedId = null;
+    whenLastNavHover = null;
 }
 
-function updateInput(element, value) {
+function updateGradioInput(element, value) {
     element.value = value;
     element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 // Helper function to get Gradio app root
@@ -191,7 +240,7 @@ function gradioApp() {
 
 // Add hover handlers to messages
 function setupMessageHandlers() {
-    const messages = document.querySelectorAll('#chat .messages .message');
+    const messages = gradioApp().querySelectorAll('#chat .messages .message');
     
     if (messages.length === 0) {
         if (setupAttempts < 10) {
@@ -204,27 +253,24 @@ function setupMessageHandlers() {
     }
     setupAttempts = 0;
 
+    const navContent = document.querySelector('.bgpl-nav-container .bgpl-nav-content');
     messages.forEach((msg, index) => {
         if (!msg.dataset.boogaplusHandled) {
             msg.dataset.boogaplusHandled = 'true';
             msg.style.cursor = 'default';
             
-            // Get the message text from the message-body
             const messageBody = msg.querySelector('.message-body');
-            if (messageBody) {                
-                // Add hover handler
-                msg.addEventListener('mouseenter', () => {
-                    const id = gradioApp().querySelector('input[class="svelte-1mhtq7j"]').value || gradioApp().querySelector('input[name="radio-7"]').value;
-                    selectMessage(messageBody, index, id);
-                });
-                
-                // Add mouseleave handler to hide nav if not selected
-                msg.addEventListener('mouseleave', () => {
-                    if (!messageBody.classList.contains('bgpl-selected-msg')) {
-                        const navContainer = document.querySelector('.bgpl-nav-container');
-                        if (navContainer) navContainer.style.display = 'none';
+            if (messageBody) {
+                // Hover handler
+                msg.addEventListener('mousemove', () => {
+                    if (selectedMessageIndex !== index) {
+                        selectMessage(messageBody, index);
+                    } else if (isNavDisplayed) {
+                        updateNavOverlay(messageBody);
+                        activateNavOverlay(navContent);
+                        startDeactivateNavOverlay(navContent, 500);
                     }
-                });
+                });               
             }
         }
     });
@@ -264,13 +310,14 @@ document.addEventListener('keydown', function(e) {
 
 // Initial setup with retry
 function initializeHandlers() {
-    console.log("Initializing handlers...");
+    console.log("Initializing message handlers for boogaPlus nav overlay...");
     setupMessageHandlers();
     
     // Create an observer for dynamic chat updates
     const chat = document.getElementById('chat');
     if (chat) {
         const observer = new MutationObserver(() => {
+            console.log("Updating message handlers for boogaPlus nav overlay...");
             setupMessageHandlers();
         });
         

@@ -1,14 +1,10 @@
 from typing import Dict, List, Optional, Coroutine
 from modules import shared
-from modules.chat import delete_history, find_all_histories, get_history_file_path, load_history_after_deletion, redraw_html
+import modules.chat as chat
+get_history_file_path = chat.get_history_file_path
 from pathlib import Path
 import json
 import traceback
-from html import escape
-import copy
-
-import asyncio
-import threading
 
 # Colour codes
 _ERROR = "\033[1;31m"
@@ -22,18 +18,20 @@ _RESET = "\033[0m"
 _current_character = None
 _current_id = None
 _history_cache = {'visible': [], 'internal': []}
-_block_append = False
+
+def validate_list(lst: List, i: int):
+    """Ensure list is properly extended to index i"""
+    if len(lst) <= i:
+        print(f"{_GRAY}Extending list from {len(lst)} to {i}{_RESET} {i + 1 - len(lst)} {[None] * (i + 1 - len(lst))}")
+        lst.extend([None] * (i + 1 - len(lst)))
 
 def validate_cache(i: int):
-    """Ensure cache is properly initialized for index i"""
+    """Ensure cache is properly extended to index i"""
     global _history_cache
-    #print(f"Current cache: {_history_cache}")
     
     # Initialize or extend cache if needed
     for cache_type in ['visible', 'internal']:
-        if len(_history_cache[cache_type]) <= i:
-            print(f"{_GRAY}Extending {cache_type} cache from {len(_history_cache[cache_type])} to {i}{_RESET} {i + 1 - len(_history_cache[cache_type])} {[None] * (i + 1 - len(_history_cache[cache_type]))}")
-            _history_cache[cache_type].extend([None] * (i + 1 - len(_history_cache[cache_type])))
+        validate_list(_history_cache[cache_type], i)
 
 def initialize_cache(i: int):
     """Initialize message cache dicts at index `i` if nonexistent"""
@@ -57,7 +55,7 @@ def update_cache(state: Dict) -> bool:
         
         # Save current cache if it exists
         if _current_character and _current_id:
-            save_cache(_history_cache, get_cache_path(_current_id, _current_character, state['mode']))
+            save_cache(state['mode'])
         
         _current_character = state['character_menu']
         _current_id = state['unique_id']
@@ -73,29 +71,29 @@ def update_cache(state: Dict) -> bool:
                 contents = f.read()
                 if contents:
                     _history_cache = json.loads(contents)
-                    print(f"{_SUCCESS}Loaded cache: {_history_cache}{_RESET}")
+                    print(f"{_SUCCESS}Loaded cache: {json.dumps(_history_cache, indent=2)}{_RESET}")
                 else:
                     _history_cache = {'visible': [], 'internal': []}
                     print(f"{_INPUT}Initialized empty cache{_RESET}")
         except Exception as e:
             _history_cache = {'visible': [], 'internal': []}
-            print(f"{_ERROR}Initialized empty cache (error: {str(e)}){_RESET}")
+            print(f"{_ERROR}Initialized empty cache (error: {e}){_RESET}")
         return True
     return False
 
-def append_to_cache(internal_text: str, visible_text: str, state: Dict, is_bot=True, i: Optional[int] = None) -> bool:
-    """Append a message to the cache"""
-    global _history_cache, _current_character, _current_id, _block_append
-    if (_block_append):
-        return False
+def append_to_cache(history: Dict, state: Dict, is_bot=True) -> bool:
+    """Append a message to the end of the cache"""
+    global _history_cache, _current_character, _current_id
     
     # Update cache if character/chat changed
     update_cache(state)
     
     msg_type = 1 if is_bot else 0  # int(is_bot)
-    history = state['history']
-    i = len(history['visible']) if i is None else i
-    
+    i = len(history['visible']) - 1
+    visible_text = history['visible'][i][msg_type]
+    if not visible_text:
+        return False
+    internal_text = history['internal'][i][msg_type]
     try:
         # Verify cache structure
         validate_cache(i)
@@ -114,22 +112,23 @@ def append_to_cache(internal_text: str, visible_text: str, state: Dict, is_bot=T
         _history_cache['internal'][i][msg_type]['pos'] = length
         
         # Save cache to disk
-        save_cache(_history_cache, get_cache_path(_current_id, _current_character, state['mode']))
+        save_cache(state['mode'])
         return True
         
     except Exception as e:
-        print(f"{_ERROR}Error appending to cache: {str(e)}{_RESET}")
+        print(f"{_ERROR}Error appending to cache: {e}{_RESET}")
         traceback.print_exc()
         return False
 
-def save_cache(cache: Dict, path: Path) -> bool:
+def save_cache(mode: Optional[str] = None) -> bool:
     """Save the cache to disk"""
+    path = get_cache_path(_current_id, _current_character, mode or shared.persistent_interface_state['mode'] or 'chat-instruct')
     try:
         with open(path, 'w', encoding='utf-8') as f:
-            json.dump(cache, f, indent=4)
+            json.dump(_history_cache, f, indent=4)
         return True
     except Exception as e:
-        print(f"{_ERROR}Error saving cache:{_RESET} {str(e)}")
+        print(f"{_ERROR}Error saving cache:{_RESET} {e}")
         traceback.print_exc()
         return False
 
@@ -140,7 +139,7 @@ def get_position(msg_cache: List) -> Optional[int]:
             return None
         return next(i for i, text in enumerate(msg_cache) if not text)  # Find the first None value
     except Exception as e:
-        print(f"{_ERROR}Error getting position:{_RESET} {str(e)}")
+        print(f"{_ERROR}Error getting position:{_RESET} {e}")
         traceback.print_exc()
         return None
 
@@ -151,9 +150,9 @@ def get_cache_path(unique_id: str, character: str, mode: str) -> Path:
         path.mkdir(parents=True)
     return path / f'{unique_id}.json.cache'
 
+
 # // TGWUI Monkey Patches // #
 
-import modules.chat as chat
 import logging as logger
 
 """rename_history"""
@@ -197,22 +196,37 @@ def handle_delete_chat_confirm_click(state):
 chat.handle_delete_chat_confirm_click = handle_delete_chat_confirm_click
 
 """handle_replace_last_reply_click"""
-replace_last_reply = chat.replace_last_reply
-save_history = chat.save_history
-redraw_html = chat.redraw_html
+_handle_replace_last_reply_click = chat.handle_replace_last_reply_click
 def handle_replace_last_reply_click(text, state):
     '''
     BOOGAPLUS MONKEY PATCH
     '''
-    global _block_append
     last_msg = state['history']['internal'][-1][1]
-    _block_append = True
-    history = replace_last_reply(text, state)
-    _block_append = False
+    [history, html, _] = _handle_replace_last_reply_click(text, state)
     if history['internal'][-1][1] != last_msg:
-        append_to_cache(history['internal'][-1][1], history['visible'][-1][1], state, is_bot=True, i=len(history['visible']) - 1)
-    save_history(history, state['unique_id'], state['character_menu'], state['mode'])
-    html = redraw_html(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'])
-
-    return [history, html, ""]
+        append_to_cache(history, state, is_bot=True)
+    return [history, html, _]
 chat.handle_replace_last_reply_click = handle_replace_last_reply_click
+
+"""handle_send_dummy_reply_click"""
+_handle_send_dummy_reply_click = chat.handle_send_dummy_reply_click
+def handle_send_dummy_reply_click(text, state):
+    '''
+    BOOGAPLUS MONKEY PATCH
+    '''
+    [history, html, _] = _handle_send_dummy_reply_click(text, state)
+    append_to_cache(history, state, is_bot=True)
+    return [history, html, _]
+chat.handle_send_dummy_reply_click = handle_send_dummy_reply_click
+
+_handle_send_dummy_message_click = chat.handle_send_dummy_message_click
+def handle_send_dummy_message_click(text, state):
+    '''
+    BOOGAPLUS MONKEY PATCH
+    '''
+    print(f"{_HILITE}handle_send_dummy_message_click{_RESET}")
+    [history, html, _] = _handle_send_dummy_message_click(text, state)
+    append_to_cache(history, state, is_bot=False)
+    append_to_cache(history, state, is_bot=True)
+    return [history, html, _]
+chat.handle_send_dummy_message_click = handle_send_dummy_message_click

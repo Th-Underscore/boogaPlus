@@ -1,53 +1,43 @@
-/* Hide BoogaPlus navigation controls */
-#bgpl_pos, #bgpl_navigate, #bgpl_selected {
-    display: none !important;
-}
-
 /* Hide Gradio elements */
 #bgpl_row {
     display: none !important;
 }
 
-/* Mobile navigation overlay */
-.bgpl-nav-overlay {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 15px;
-    cursor: pointer;
-    border-radius: 5px;
-    display: none;
-    z-index: 1000;
-    min-width: 50px;
-    text-align: center;
-}
-
-.bgpl-nav-overlay.active {
-    display: block;
-}
-
+/* Mobile-compatible navigation overlay */
 .bgpl-nav-container {
-    position: absolute;
+    position: absolute !important;
     display: none;
     z-index: 1000;
-    width: 100%;
+    height: 0;
+    width: 0;
     padding: 5px;
     box-sizing: border-box;
     transition: all 0.2s ease;
 }
 
 .bgpl-nav-content {
+    float: right !important;
     display: flex;
     justify-content: space-between;
     align-items: center;
     background: rgba(0, 0, 0, 0.7);
+    opacity: 0.3;
     border-radius: 5px;
     padding: 5px 10px;
     margin: 0 auto;
     max-width: 150px;
     gap: 10px;
-    transition: all 0.2s ease, visibility 0.75s ease, opacity 0.75s ease !important;
+    transition: all 0.2s ease-in;
+    /* Hover transition & transition-delay handled in JS */
+}
+
+.bgpl-nav-content[activated] {
+    opacity: 1.0;
+}
+
+.bgpl-nav-content[hidden] {
+    opacity: 0.0;
+    pointer-events: none;
 }
 
 .bgpl-nav-left,
@@ -55,17 +45,25 @@
     display: flex;
     align-items: center;
     color: white;
-    cursor: pointer;
+    opacity: 0.3;
+    cursor: not-allowed;
     padding: 4px;
     border-radius: 4px;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, opacity 0.2s ease;
     min-width: 24px;
     justify-content: center;
 }
 
-.bgpl-nav-left:hover,
-.bgpl-nav-right:hover {
+.bgpl-nav-left[activated],
+.bgpl-nav-right[activated] {
+    cursor: pointer;
+    opacity: 1.0;
+}
+
+.bgpl-nav-left[activated]:hover,
+.bgpl-nav-right[activated]:hover {
     background: rgba(255, 255, 255, 0.1);
+    min-width: scale(1.1);
 }
 
 .bgpl-nav-pos {
@@ -77,40 +75,13 @@
     text-align: center;
     user-select: none;
     flex: 1;
+    display: inline;
 }
 
 .bgpl-nav-arrow {
     font-size: 18px;
     opacity: 0.9;
     user-select: none;
-}
-
-.bgpl-nav-button {
-    background: rgba(0, 0, 0, 0.6);
-    color: white;
-    border: none;
-    padding: 15px;
-    border-radius: 50%;
-    cursor: pointer;
-    width: 50px;
-    height: 50px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    transition: background 0.2s, transform 0.4s;
-}
-
-.bgpl-nav-button:hover {
-    background: rgba(0, 0, 0, 0.8);
-    transform: scale(1.1);
-}
-
-.bgpl-nav-button:active {
-    transform: scale(0.95);
 }
 
 .bgpl-selected-msg {
@@ -120,29 +91,19 @@
 }
 
 .message:hover {
-    background: rgba(0, 0, 0, 0.02);
+    background: rgba(0, 0, 0, 0.05);
 }
 
 .message, .message .message-body {
     transition: all 0.3s;
 }
 
-/* Hover effects */
-.bgpl-nav-overlay:hover {
-    background: rgba(0, 0, 0, 0.8);
-}
-
-.bgpl-nav-overlay:hover .bgpl-nav-info,
-.bgpl-nav-overlay:hover .bgpl-nav-arrow {
-    opacity: 1;
-}
-
 /* Mobile-specific adjustments */
 @media (max-width: 768px) {
     .bgpl-nav-button {
-        width: 44px;
-        height: 44px;
-        font-size: 20px;
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
     }
     
     .bgpl-nav-left {
