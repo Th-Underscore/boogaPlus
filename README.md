@@ -17,7 +17,9 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
 
 1. Navigate to your text-generation-webui installation
 2. Clone this repository into the `extensions` folder with the lowercase name `boogaplus`:
-   - `git clone https://github.com/Th-Underscore/boogaPlus extensions/boogaplus`
+   ```sh
+   git clone https://github.com/Th-Underscore/boogaPlus.git extensions/boogaplus
+   ```
 3. Launch text-generation-webui
 
 ## 📝 Roadmap
