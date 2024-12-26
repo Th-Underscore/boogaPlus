@@ -2,30 +2,27 @@
 
 A text-generation-webui extension that adds some nice QoL features to the UI.
 
-## Features
+## ✨ Features
 
-✨ Currently Implemented:
 - Message History Navigation
   - Scroll through bot and user messages (cached edits and regenerations)
+    - Click to force-select messages
+    - Re-click or click-off to force-deselect
   - Retrieves both 'internal' and 'visible' texts post-extension modifications for maximum compatibility
   - Smart detection of "Replace last reply" operations
   - Handles chat renaming and deletion
   - Full support for blank messages
 
-<sub>considering switching to full custom JS cache tracking due to Gradio latency (150ms+ !!!)</sub>
-
-## Installation
+## 🔧 Installation
 
 1. Navigate to your text-generation-webui installation
-2. Clone this repository into the `extensions` folder
+2. Clone this repository into the `extensions` folder with the lowercase name `boogaplus`:
+   - `git clone https://github.com/Th-Underscore/boogaPlus extensions/boogaplus`
 3. Launch text-generation-webui
 
-## Roadmap
+## 📝 Roadmap
 
-📝 Planned Features:
-1. Enhanced Message Selection
-   - Click to force-select messages
-   - Click-off to force-deselect
+1. Reimplement nav overlay mode (for now, just revert to a previous commit if you prefer the overlay)
 2. User Impersonation Navigation
    - Ability to scroll through user impersonations
 3. Message Metadata
@@ -38,20 +35,18 @@ A text-generation-webui extension that adds some nice QoL features to the UI.
    - Parse notebook/default into new history
 6. Advanced Features
    - Auto-impersonation mode (continuous bot self-conversation)
-7. Integrate into TGWUI (full overlay overhaul into direct message HTML)
+7. Integrate into TGWUI
 
-## Usage
+## 📖 Usage
 
-Use the UI. That's it!
+- On/off to display the nav container
+- Click either nav button to navigate
+- Click on a message to select it:
+   - Ctrl+LeftArrow and Ctrl+RightArrow to navigate through edits / generations
+   - Ctrl+UpArrow and Ctrl+DownArrow to scroll through messages
 
-- Well, Ctrl+LeftArrow and Ctrl+RightArrow after hovering over a message are fun shortcuts for navigating.
+## 🤝 Contributing
 
-## Known Issues
+Contributions are welcome! Please feel free to submit a Pull Request. CSS styling upgrades are especially welcome.
 
-- Refreshing the page sometimes causes an internal error (refresh again usually does the trick)
-- New generations require hovering over the message to update
-- Switching tabs doesn't immediately hide the overlay
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request. I probably won't be working on this extension in the near future, so please don't hesitate to reach out if you have any questions or suggestions.
+I probably won't be working on this extension in the near future, so please don't hesitate to reach out if you have any questions or suggestions.

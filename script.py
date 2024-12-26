@@ -1,6 +1,6 @@
 from calendar import c
 from hmac import new
-from typing import Dict, List, Optional, Coroutine
+from typing import Dict, List, Optional, Coroutine, Iterable
 from html import escape, unescape
 from pathlib import Path
 import traceback
@@ -8,6 +8,8 @@ import json
 import asyncio
 import threading
 import logging as logger
+from functools import reduce
+from operator import getitem
 
 import extensions.boogaplus.utils.cache as cache
 
@@ -27,9 +29,33 @@ _BOLD = "\033[1;37m"
 _RESET = "\033[0m"
 
 params = {
-    'display_name': 'boogaPlus',
-    'is_tab': True,
+    'display_name': 'boogaPlus'
 }
+
+def recursive_get(data: Dict | Iterable, keyList: List[int | str], default=None):
+    """Iterate nested dictionary / iterable."""
+    try:
+        return reduce(getitem, keyList, data)
+    except KeyError:
+        return default
+    except IndexError:
+        return default
+    except TypeError:
+        return default
+    except Exception as e:
+        print(f"{_ERROR}Error getting value:{_RESET} {e}")
+        traceback.print_exc()
+        return None
+def length(data: Iterable):
+    """Get length of iterable with try catch."""
+    try:
+        return len(data)
+    except TypeError:
+        return 0
+    except Exception as e:
+        print(f"{_ERROR}Error getting length:{_RESET} {e}")
+        traceback.print_exc()
+        return 0
 
 # input_modifier()
 # output_modifier()
@@ -39,150 +65,129 @@ def ui():
     """Create custom gradio elements"""
     from modules.utils import gradio
     
-    with gr.Tab(visible=False, elem_id="bgpl_row") as bgpl_row:  # Allow JavaScript retrieval
-        shared.gradio['bgpl_navigate'] = gr.Button(value="", elem_id="bgpl_navigate")       # navigate button
-        
-        # No gr.JSON cuz it's hard to stringify and parse due to its specific structure
-        shared.gradio['bgpl_chat_map'] = gr.Textbox(value="[]", elem_id="bgpl_chat_map")    # message indices and types
-        shared.gradio['bgpl_chat_data'] = gr.Textbox(value="[]", elem_id="bgpl_chat_data")  # message metadata
-        shared.gradio['bgpl_chat_idx'] = gr.Number(value=0, elem_id="bgpl_chat_idx")        # message location in chat UI
-        shared.gradio['bgpl_direction'] = gr.Textbox(value="", elem_id="bgpl_direction")    # direction input ('left', 'right')
-
-    # Get positions on hover
-    shared.gradio['bgpl_chat_idx'].change(
-        fn=retrieve_message_positions,
-        inputs=gradio(
-            'bgpl_chat_map',        # all message locations
-            'bgpl_chat_data',       # original metadata
-            'bgpl_chat_idx',        # message location
-            'history', 'name1', 'name2', 'mode', 'chat_style', 'character_menu', 'unique_id',
-        ),
-        outputs=gradio(
-            'bgpl_chat_data',       # updated current position and total available positions
-        )
+    with gr.Tab(visible=True, label="boogaPlus", elem_id="bgpl_tab") as bgpl_row:
+        with gr.Row(visible=False, elem_id="bgpl_info_row"):
+            shared.gradio['bgpl_startup'] = gr.Button(elem_id="bgpl_startup")                       # chat startup handler
+            shared.gradio['bgpl_navigate'] = gr.Button(value="", elem_id="bgpl_navigate")           # navigate() handler
+            
+            shared.gradio['bgpl_history_index'] = gr.Number(value=0, elem_id="bgpl_history_index")  # selected message location in history
+            shared.gradio['bgpl_message_type'] = gr.Number(value=0, elem_id="bgpl_message_type")    # selected message type (0 = user, 1 = bot)
+            shared.gradio['bgpl_direction'] = gr.Textbox(value="", elem_id="bgpl_direction")        # selected direction input ('left', 'right')
+            
+        with gr.Row(visible=True, elem_id="bgpl_display_row"):
+            shared.gradio['bgpl_display_mode'] = gr.Radio(choices=['html', 'overlay (disabled)', 'off'], value='html', label="", elem_classes=['slim-dropdown'], interactive=True, elem_id="bgpl_display_mode")
+    
+    # Startup event
+    shared.gradio['bgpl_startup'].click(
+        fn=startup,
+        inputs=gradio('history', 'name1', 'name2', 'mode', 'chat_style', 'character_menu', 'unique_id'),
+        outputs=gradio('display'),  # TGWUI display
+        show_progress=False
     ).then(
         fn=None,
         inputs=None,
         outputs=None,
         js="""async () => {
-            document.querySelector('#bgpl_chat_data textarea').dispatchEvent(new Event('change', { 'bubbles': true }));
-        }"""
+            document.querySelector('#bgpl_navigate').dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        show_progress=False
+    )
+    
+    shared.gradio['bgpl_display_mode'].change(
+        fn=change_display_mode,
+        inputs=gradio(
+            'bgpl_display_mode',
+            'history', 'name1', 'name2', 'mode', 'chat_style', 'character_menu', 'unique_id',
+        ),
+        outputs=gradio('display'),
+        show_progress=False
     )
     
     # Navigate through positions
     shared.gradio['bgpl_navigate'].click(
         fn=navigate,
         inputs=gradio(
-            'bgpl_chat_map',        # all message locations
-            'bgpl_chat_data',       # original metadata
-            'bgpl_chat_idx',        # message location
-            'bgpl_direction',       # direction
+            'bgpl_history_index',
+            'bgpl_message_type',
+            'bgpl_direction',
             'history', 'name1', 'name2', 'mode', 'chat_style', 'character_menu', 'unique_id',
         ),
         outputs=gradio(
-            'display', 'history',   # TGWUI display and history
-            'bgpl_chat_data',       # updated metadata
-        )
+            'display', 'history',  # TGWUI display and history
+        ),
+        show_progress='full'
     ).then(
-        fn=lambda: None,
+        fn=None,
         inputs=None,
         outputs=None,
         js="""async () => {
-            document.querySelector('#bgpl_chat_data textarea').dispatchEvent(new Event('change', { 'bubbles': true }));
-        }"""
+            document.querySelector('#bgpl_navigate').dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        show_progress='full'
     )
 
-def get_message_positions(i: int, msg_type: int, history: Dict):
-    try:            
-        if i < 0 or i >= len(history['internal']) or msg_type not in [0, 1]:
-            return 0, 0
-        
-        _history_cache = cache._history_cache
-        if (i >= len(_history_cache['visible']) or not _history_cache['visible'][i]):
-            return 0, 0
-        
-        try:
-            if not _history_cache['visible'][i][msg_type]:
-                return 0, 0
-            current_pos = _history_cache['visible'][i][msg_type].get('pos', 0)
-            total_pos = len(_history_cache['visible'][i][msg_type]['text'])
-            return current_pos, total_pos
-        except Exception as e:
-            print(f"{_ERROR}Error getting position info: {e}{_RESET}")
-            traceback.print_exc()
-            return 0, 0
-    except Exception as e:
-        print(f"{_ERROR}Error in get_message_positions: {e}{_RESET}")
-        traceback.print_exc()
-        return 0, 0
+def startup(history: Dict, name1: str, name2: str, mode: str, chat_style: str, character: str, unique_id: str):
+    """Chat history draw handler for boogaPlus startup."""
+    return chat.redraw_html(history, name1, name2, mode, chat_style, character, unique_id, reset_cache=True)
 
-async def retrieve_message_positions(chat_map: str, chat_data: str, chat_index: float, history: Dict, name1: str, name2: str, mode: str, chat_style: str, character_menu: str, unique_id: str):
-    """Get the current and total positions for a message"""
+def change_display_mode(display_mode: str, history: Dict, name1: str, name2: str, mode: str, chat_style: str, character: str, unique_id: str):
+    """Change boogaPlus display mode in chat UI."""
+    if display_mode == 'off':
+        cache._mode = 'off'
+        return chat.redraw_html(history, name1, name2, mode, chat_style, character, unique_id, reset_cache=True)
+    
+    if display_mode == 'overlay (disabled)':
+        cache._mode = 'overlay'
+        return chat.redraw_html(history, name1, name2, mode, chat_style, character, unique_id, reset_cache=True)
+    
+    if display_mode == 'html':
+        cache._mode = 'html'
+        return chat.redraw_html(history, name1, name2, mode, chat_style, character, unique_id, reset_cache=True)
+    
+    return chat.redraw_html(history, name1, name2, mode, chat_style, character, unique_id, reset_cache=True)
+
+def get_message_positions(i: int, msg_type: int):
+    """Recursively get cached message position and total message positions."""
+    msg_data = recursive_get(cache._history_cache, ['visible', i, msg_type])
+    return recursive_get(msg_data, ['pos'], 0), length(recursive_get(msg_data, ['text'], []))
+
+def navigate(i: float, msg_type: float, direction: str, history: Dict, name1: str, name2: str, mode: str, chat_style: str, character: str, unique_id: str):
+    """Navigate left or right through message positions."""
     try:
-        chat_map = json.loads(chat_map)
-        chat_data = json.loads(chat_data)
+        from modules.html_generator import chat_html_wrapper
+        
         state = {
             'history': history,
             'name1': name1,
             'name2': name2,
             'mode': mode,
             'chat_style': chat_style,
-            'character_menu': character_menu,
+            'character_menu': character,
             'unique_id': unique_id
         }
         
-        chat_index = int(chat_index)
-        if chat_index < 0 or chat_index >= len(chat_map):
-            return json.dumps(chat_data)
-        
-        # Update cache if needed
-        cache.update_cache(state)
-        
-        min_index = len(chat_data)
-        max_index = len(chat_map) - 1
-        if min_index <= max_index:
-            to_extend = max_index + 1 - min_index
-            chat_data.extend(get_message_positions(i, msg_type, history) for [i, msg_type] in chat_map[-to_extend:])
-        else:
-            [i, msg_type] = chat_map[chat_index]
-            chat_data[chat_index] = get_message_positions(i, msg_type, history)
-        return json.dumps(chat_data)
-    except Exception as e:
-        print(f"{_ERROR}Error in retrieve_message_positions: {e}{_RESET}")
-        traceback.print_exc()
-        return json.dumps(chat_data)
-
-async def navigate(chat_map: str, chat_data: str, chat_index: float, direction: str, history: Dict, name1: str, name2: str, mode: str, chat_style: str, character_menu: str, unique_id: str):
-    """Navigate left or right through message positions"""
-    try:
-        from modules.html_generator import chat_html_wrapper
+        i = int(i)
+        msg_type = int(msg_type)
         
         # Retrieve current position and total positions
-        chat_data = await retrieve_message_positions(chat_map, chat_data, chat_index, history, name1, name2, mode, chat_style, character_menu, unique_id)  # Also updates cache
+        cache.update_cache(state)
+        current_pos, total_pos = get_message_positions(i, msg_type)
         
-        chat_map = json.loads(chat_map)
-        chat_data = json.loads(chat_data)
-        chat_index = int(chat_index)
-        
-        [history_index, message_type] = chat_map[chat_index]
-        [current_pos, total_pos] = chat_data[chat_index]
         if not total_pos:
-            return chat_html_wrapper(history, name1, name2, mode, chat_style, character_menu), history, json.dumps(chat_data)
+            return chat_html_wrapper(history, name1, name2, mode, chat_style, character, unique_id), history
         
         # Calculate new position and check if valid
         new_pos = current_pos
         if direction == "right":
             new_pos += 1
             if new_pos >= total_pos:
-                return chat_html_wrapper(history, name1, name2, mode, chat_style, character_menu), history, json.dumps(chat_data)
+                return chat_html_wrapper(history, name1, name2, mode, chat_style, character, unique_id), history
         elif direction == "left":
             new_pos -= 1
             if new_pos < 0:
-                return chat_html_wrapper(history, name1, name2, mode, chat_style, character_menu), history, json.dumps(chat_data)
+                return chat_html_wrapper(history, name1, name2, mode, chat_style, character, unique_id), history
         
         # Validate and initialize cache
-        i = int(history_index)
-        msg_type = int(message_type)
         cache.validate_cache(i)
         cache.initialize_cache(i)
         _history_cache = cache._history_cache
@@ -195,18 +200,16 @@ async def navigate(chat_map: str, chat_data: str, chat_index: float, direction: 
         new_visible = visible_msg_cache['text'][new_pos]
         new_internal = internal_msg_cache['text'][new_pos]
         
-        chat_data[chat_index] = [new_pos, total_pos]
-        
         # Update history
         if new_visible and new_internal:
             history['visible'][i][msg_type] = new_visible
             history['internal'][i][msg_type] = new_internal
         
-        return chat_html_wrapper(history, name1, name2, mode, chat_style, character_menu), history, json.dumps(chat_data)
+        return chat_html_wrapper(history, name1, name2, mode, chat_style, character, unique_id), history
     except Exception as e:
         print(f"{_ERROR}Error during navigation: {e}{_RESET}")
         traceback.print_exc()
-        return chat_html_wrapper(history, name1, name2, mode, chat_style, character_menu), history, json.dumps(chat_data) if not type(chat_data) is str else chat_data
+        return chat_html_wrapper(history, name1, name2, mode, chat_style, character, unique_id), history
 
 def custom_css():
     return open(Path(__file__).parent / 'ui/.css', 'r', encoding='utf-8').read()
@@ -249,6 +252,141 @@ def generate_chat_reply_wrapper(text, state, regenerate=False, _continue=False):
                 cache.append_to_cache(history, state, is_bot=False)  # history['visible'][-1][0] == escape(text)
             _is_first = False
         yield html, history
-        
     cache.append_to_cache(history, state, is_bot=True)
+    yield chat_html_wrapper(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'], state['unique_id']), history
+        
 chat.generate_chat_reply_wrapper = generate_chat_reply_wrapper
+
+
+
+
+"""html"""
+import time
+import modules.html_generator as html_generator
+chat_styles = html_generator.chat_styles
+convert_to_markdown_wrapped = html_generator.convert_to_markdown_wrapped
+def generate_cai_chat_html(history, name1, name2, style, character, unique_id, reset_cache=False):
+    output = f'<style>{chat_styles[style]}</style><div class="chat cai-chat" id="chat"><div class="messages">'
+
+    # We use ?character and ?time.time() to force the browser to reset caches
+    img_bot = f'<img src="file/cache/pfp_character_thumb.png?{character}" class="pfp_character">' if Path("cache/pfp_character_thumb.png").exists() else ''
+    img_me = f'<img src="file/cache/pfp_me.png?{time.time() if reset_cache else ""}">' if Path("cache/pfp_me.png").exists() else ''
+    
+    try: cache.update_cache({
+        'history': history,
+        'name1': name1,
+        'name2': name2,
+        'mode': 'chat-instruct',
+        'chat_style': style,
+        'character_menu': character,
+        'unique_id': unique_id
+    })
+    except: pass
+
+    for i, _row in enumerate(history):
+        row = [convert_to_markdown_wrapped(entry, use_cache=i != len(history) - 1) for entry in _row]
+
+        if row[0]:  # don't display empty user messages
+            try: current_pos, total_pos = get_message_positions(i, 0)
+            except: current_pos, total_pos = 0, 0
+            output += f"""
+                  <div class="message" data-history-index="{i}" data-message-type="0">
+                    <div class="circle-you">
+                      {img_me}
+                    </div>
+                    <div class="text">
+                      <div class="username">
+                        {name1}
+                      </div>
+                      <div class="message-body">
+                        {row[0]}
+                      </div>
+                    </div>
+                    <div class="boogaplus-container"{' hidden="true"' if cache._mode == 'off' else ''}>
+                      <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+                        <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+                        <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+                        <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+                      </div>
+                    </div>
+                  </div>
+                """
+
+        try: current_pos, total_pos = get_message_positions(i, 1)
+        except: current_pos, total_pos = 0, 0
+        output += f"""
+              <div class="message" data-history-index="{i}" data-message-type="1">
+                <div class="circle-bot">
+                  {img_bot}
+                </div>
+                <div class="text">
+                  <div class="username">
+                    {name2}
+                  </div>
+                  <div class="message-body">
+                    {row[1]}
+                  </div>
+                </div>
+                <div class="boogaplus-container"{' hidden="true"' if cache._mode == 'off' else ''}>
+                  <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+                    <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+                    <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+                    <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+                  </div>
+                </div>
+              </div>
+            """
+
+    output += "</div></div>"
+    
+    return output
+html_generator.generate_cai_chat_html = generate_cai_chat_html
+
+def generate_chat_html(history, name1, name2, reset_cache=False):
+    output = f'<style>{chat_styles["wpp"]}</style><div class="chat wpp" id="chat"><div class="messages">'
+
+    for i, _row in enumerate(history):
+        row = [convert_to_markdown_wrapped(entry, use_cache=i != len(history) - 1) for entry in _row]
+
+        if row[0]:  # don't display empty user messages
+            try: current_pos, total_pos = get_message_positions(i, 0)
+            except: current_pos, total_pos = 0, 0
+            output += f"""
+              <div class="message" data-history-index="{i}" data-message-type="0">
+                <div class="text-you">
+                  <div class="message-body">
+                    {row[0]}
+                  </div>
+                  <div class="boogaplus-container">
+                    <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+                      <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+                      <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+                      <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            """
+
+        try: current_pos, total_pos = get_message_positions(i, 1)
+        except: current_pos, total_pos = 0, 0
+        output += f"""
+          <div class="message" data-history-index="{i}" data-message-type="1">
+            <div class="text-bot">
+              <div class="message-body">
+                {row[1]}
+              </div>
+              <div class="boogaplus-container">
+                <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+                  <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+                  <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+                  <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        """
+
+    output += "</div></div>"
+    return output
+html_generator.generate_chat_html = generate_chat_html

@@ -15,6 +15,7 @@ _HILITE = "\033[0;36m"
 _BOLD = "\033[1;37m"
 _RESET = "\033[0m"
 
+_mode = 'html'
 _current_character = None
 _current_id = None
 _history_cache = {'visible': [], 'internal': []}
@@ -47,7 +48,7 @@ def update_cache(state: Dict) -> bool:
     """Update the current cache based on character or chat ID changes"""
     global _current_character, _current_id, _history_cache
     
-    if state['character_menu'] != _current_character or state['unique_id'] != _current_id:
+    if _current_character != state['character_menu'] or _current_id != state['unique_id']:
         print(f"{_HILITE}Cache update needed:{_RESET}")
         print(f"{_BOLD}Character: {_current_character} -> {state['character_menu']}")
         print(f"ID: {_current_id} -> {state['unique_id']}{_RESET}")
@@ -116,10 +117,15 @@ def append_to_cache(history: Dict, state: Dict, is_bot=True) -> bool:
     except Exception as e:
         print(f"{_ERROR}Error appending to cache: {e}{_RESET}")
         traceback.print_exc()
-        return False
+    return False
 
 def save_cache(mode: Optional[str] = None) -> bool:
     """Save the cache to disk"""
+    global _history_cache, _current_character, _current_id
+    
+    if not _current_id or not _current_character:
+        return False
+    
     path = get_cache_path(_current_id, _current_character, mode or shared.persistent_interface_state['mode'] or 'chat-instruct')
     try:
         with open(path, 'w', encoding='utf-8') as f:
@@ -128,7 +134,7 @@ def save_cache(mode: Optional[str] = None) -> bool:
     except Exception as e:
         print(f"{_ERROR}Error saving cache:{_RESET} {e}")
         traceback.print_exc()
-        return False
+    return False
 
 def get_position(msg_cache: List) -> Optional[int]:
     """Get the current position of the message's cache"""
@@ -139,7 +145,7 @@ def get_position(msg_cache: List) -> Optional[int]:
     except Exception as e:
         print(f"{_ERROR}Error getting position:{_RESET} {e}")
         traceback.print_exc()
-        return None
+    return None
 
 def get_cache_path(unique_id: str, character: str, mode: str) -> Path:
     """Get the path to the cache file"""
@@ -194,36 +200,48 @@ def handle_delete_chat_confirm_click(state):
 chat.handle_delete_chat_confirm_click = handle_delete_chat_confirm_click
 
 """handle_replace_last_reply_click"""
-_handle_replace_last_reply_click = chat.handle_replace_last_reply_click
+replace_last_reply = chat.replace_last_reply
+save_history = chat.save_history
+redraw_html = chat.redraw_html
 def handle_replace_last_reply_click(text, state):
     '''
     BOOGAPLUS MONKEY PATCH
     '''
     last_msg = state['history']['internal'][-1][1]
-    [history, html, _] = _handle_replace_last_reply_click(text, state)
+    history = replace_last_reply(text, state)
+    save_history(history, state['unique_id'], state['character_menu'], state['mode'])
     if history['internal'][-1][1] != last_msg:
         append_to_cache(history, state, is_bot=True)
-    return [history, html, _]
+    html = redraw_html(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'], state['unique_id'])
+
+    return [history, html, ""]
 chat.handle_replace_last_reply_click = handle_replace_last_reply_click
 
 """handle_send_dummy_reply_click"""
-_handle_send_dummy_reply_click = chat.handle_send_dummy_reply_click
+send_dummy_reply = chat.send_dummy_reply
 def handle_send_dummy_reply_click(text, state):
     '''
     BOOGAPLUS MONKEY PATCH
     '''
-    [history, html, _] = _handle_send_dummy_reply_click(text, state)
+    history = send_dummy_reply(text, state)
+    save_history(history, state['unique_id'], state['character_menu'], state['mode'])
     append_to_cache(history, state, is_bot=True)
-    return [history, html, _]
+    html = redraw_html(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'], state['unique_id'])
+    
+    return [history, html, ""]
 chat.handle_send_dummy_reply_click = handle_send_dummy_reply_click
 
-_handle_send_dummy_message_click = chat.handle_send_dummy_message_click
+"""handle_send_dummy_message_click"""
+send_dummy_message = chat.send_dummy_message
 def handle_send_dummy_message_click(text, state):
     '''
     BOOGAPLUS MONKEY PATCH
     '''
-    [history, html, _] = _handle_send_dummy_message_click(text, state)
+    history = send_dummy_message(text, state)
+    save_history(history, state['unique_id'], state['character_menu'], state['mode'])
     append_to_cache(history, state, is_bot=False)
     append_to_cache(history, state, is_bot=True)
-    return [history, html, _]
+    html = redraw_html(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'], state['unique_id'])
+    
+    return [history, html, ""]
 chat.handle_send_dummy_message_click = handle_send_dummy_message_click
