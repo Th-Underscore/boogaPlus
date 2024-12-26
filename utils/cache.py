@@ -49,9 +49,7 @@ def update_cache(state: Dict) -> bool:
     global _current_character, _current_id, _history_cache
     
     if _current_character != state['character_menu'] or _current_id != state['unique_id']:
-        print(f"{_HILITE}Cache update needed:{_RESET}")
-        print(f"{_BOLD}Character: {_current_character} -> {state['character_menu']}")
-        print(f"ID: {_current_id} -> {state['unique_id']}{_RESET}")
+        print(f"{_HILITE}Cache update needed:{_RESET} {_current_character} -> {state['character_menu']} {_GRAY}||{_RESET} {_current_id} -> {state['unique_id']}{_RESET}")
         
         # Save current cache if it exists
         if _current_character and _current_id:
