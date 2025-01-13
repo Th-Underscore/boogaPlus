@@ -1,23 +1,14 @@
-from calendar import c
-from hmac import new
-from typing import Dict, List, Optional, Coroutine, Iterable
+from typing import Dict, List, Iterable
 from html import escape, unescape
 from pathlib import Path
 import traceback
-import json
-import asyncio
-import threading
-import logging as logger
 from functools import reduce
 from operator import getitem
 
 import extensions.boogaplus.utils.cache as cache
 
 from modules import shared
-from fastapi import FastAPI
 import gradio as gr
-
-from modules.extensions import apply_extensions
 
 # Colour codes
 _ERROR = "\033[1;31m"
@@ -232,13 +223,7 @@ atexit.register(cleanup)
 
 """generate_chat_reply_wrapper"""
 import modules.chat as chat
-character_is_loaded = chat.character_is_loaded
-remove_last_message = chat.remove_last_message
-send_dummy_message = chat.send_dummy_message
-send_dummy_reply = chat.send_dummy_reply
-generate_chat_reply = chat.generate_chat_reply
 chat_html_wrapper = chat.chat_html_wrapper
-save_history = chat.save_history
 _generate_chat_reply_wrapper = chat.generate_chat_reply_wrapper
 def generate_chat_reply_wrapper(text, state, regenerate=False, _continue=False):
     '''
@@ -254,7 +239,6 @@ def generate_chat_reply_wrapper(text, state, regenerate=False, _continue=False):
         yield html, history
     cache.append_to_cache(history, state, is_bot=True)
     yield chat_html_wrapper(history, state['name1'], state['name2'], state['mode'], state['chat_style'], state['character_menu'], state['unique_id']), history
-        
 chat.generate_chat_reply_wrapper = generate_chat_reply_wrapper
 
 
@@ -262,9 +246,16 @@ chat.generate_chat_reply_wrapper = generate_chat_reply_wrapper
 
 """html"""
 import time
+import html
 import modules.html_generator as html_generator
 chat_styles = html_generator.chat_styles
 convert_to_markdown_wrapped = html_generator.convert_to_markdown_wrapped
+
+copy_svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-copy"><path d="M8 8m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z"></path><path d="M16 8v-2a2 2 0 0 0 -2 -2h-8a2 2 0 0 0 -2 2v8a2 2 0 0 0 2 2h2"></path></svg>'''
+refresh_svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tabler-icon tabler-icon-repeat"><path d="M4 12v-3a3 3 0 0 1 3 -3h13m-3 -3l3 3l-3 3"></path><path d="M20 12v3a3 3 0 0 1 -3 3h-13m3 3l-3 -3l3 -3"></path></svg>'''
+copy_button = f'<button class="footer-button footer-copy-button" onclick="copyToClipboard(this)">{copy_svg}</button>'
+refresh_button = f'<button class="footer-button footer-refresh-button" onclick="regenerateClick()">{refresh_svg}</button>'
+
 def generate_cai_chat_html(history, name1, name2, style, character, unique_id, reset_cache=False):
     output = f'<style>{chat_styles[style]}</style><div class="chat cai-chat" id="chat"><div class="messages">'
 
@@ -282,111 +273,135 @@ def generate_cai_chat_html(history, name1, name2, style, character, unique_id, r
         'unique_id': unique_id
     })
     except: pass
+    
+    for i in range(len(history['visible'])):
+        row_visible = history['visible'][i]
+        row_internal = history['internal'][i]
+        converted_visible = [convert_to_markdown_wrapped(entry, use_cache=i != len(history['visible']) - 1) for entry in row_visible]
 
-    for i, _row in enumerate(history):
-        row = [convert_to_markdown_wrapped(entry, use_cache=i != len(history) - 1) for entry in _row]
-
-        if row[0]:  # don't display empty user messages
+        if converted_visible[0]:  # Don't display empty user messages
             try: current_pos, total_pos = get_message_positions(i, 0)
             except: current_pos, total_pos = 0, 0
-            output += f"""
-                  <div class="message" data-history-index="{i}" data-message-type="0">
-                    <div class="circle-you">
-                      {img_me}
-                    </div>
-                    <div class="text">
-                      <div class="username">
-                        {name1}
-                      </div>
-                      <div class="message-body">
-                        {row[0]}
-                      </div>
-                    </div>
-                    <div class="boogaplus-container"{' hidden="true"' if cache._mode == 'off' else ''}>
-                      <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
-                        <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
-                        <div class="nav-pos">{current_pos+1}/{total_pos}</div>
-                        <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
-                      </div>
-                    </div>
-                  </div>
-                """
+            boogaplus_hidden = ' hidden="true"' if cache._mode == 'off' else ''
+            nav_hidden = ' hidden="true"' if total_pos <= 1 else ''
+            left_activated = f' activated="true" onclick="navigateClick(this, {i}, 0, \'left\')"' if current_pos != 0 else ''
+            right_activated = f' activated="true" onclick="navigateClick(this, {i}, 0, \'right\')"' if current_pos <= total_pos - 2 else ''
+            nav_left = f'<button class="nav-arrow nav-left"{left_activated}><</button>'
+            nav_pos = f'<div class="nav-pos">{current_pos+1}/{total_pos}</div>'
+            nav_right = f'<button class="nav-arrow nav-right"{right_activated}>></button>'
+            output += (
+                f'<div class="message" onclick="selectMessage(this, {i}, 0)"'
+                f'data-raw="{html.escape(row_internal[0], quote=True)}">'
+                f'<div class="circle-you">{img_me}</div>'
+                f'<div class="text">'
+                    f'<div class="username">{name1}</div>'
+                    f'<div class="message-body">{converted_visible[0]}</div>'
+                    f'{copy_button}'
+                f'</div>'
+                f'<div class="boogaplus-container"{boogaplus_hidden}>'
+                    f'<div class="nav-container"{nav_hidden}>'
+                        f'{nav_left}'
+                        f'{nav_pos}'
+                        f'{nav_right}'
+                    f'</div>'
+                f'</div>'
+                f'</div>'
+            )
 
         try: current_pos, total_pos = get_message_positions(i, 1)
         except: current_pos, total_pos = 0, 0
-        output += f"""
-              <div class="message" data-history-index="{i}" data-message-type="1">
-                <div class="circle-bot">
-                  {img_bot}
-                </div>
-                <div class="text">
-                  <div class="username">
-                    {name2}
-                  </div>
-                  <div class="message-body">
-                    {row[1]}
-                  </div>
-                </div>
-                <div class="boogaplus-container"{' hidden="true"' if cache._mode == 'off' else ''}>
-                  <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
-                    <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
-                    <div class="nav-pos">{current_pos+1}/{total_pos}</div>
-                    <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
-                  </div>
-                </div>
-              </div>
-            """
+        boogaplus_hidden = ' hidden="true"' if cache._mode == 'off' else ''
+        nav_hidden = ' hidden="true"' if total_pos <= 1 else ''
+        left_activated = f' activated="true" onclick="navigateClick(this, {i}, 1, \'left\')"' if current_pos != 0 else ''
+        right_activated = f' activated="true" onclick="navigateClick(this, {i}, 1, \'right\')"' if current_pos <= total_pos - 2 else ''
+        nav_left = f'<button class="nav-arrow nav-left"{left_activated}><</button>'
+        nav_pos = f'<div class="nav-pos">{current_pos+1}/{total_pos}</div>'
+        nav_right = f'<button class="nav-arrow nav-right"{right_activated}>></button>'
+        output += (
+            f'<div class="message" onclick="selectMessage(this, {i}, 1)"'
+            f'data-raw="{html.escape(row_internal[1], quote=True)}">'
+            f'<div class="circle-bot">{img_bot}</div>'
+            f'<div class="text">'
+                f'<div class="username">{name2}</div>'
+                f'<div class="message-body">{converted_visible[1]}</div>'
+                f'{copy_button}'
+                f'{refresh_button if i == len(history["visible"]) - 1 else ""}'
+            f'</div>'
+            f'<div class="boogaplus-container"{boogaplus_hidden}>'
+                f'<div class="nav-container"{nav_hidden}>'
+                    f'{nav_left}'
+                    f'{nav_pos}'
+                    f'{nav_right}'
+                f'</div>'
+            f'</div>'
+            f'</div>'
+        )
+        
 
     output += "</div></div>"
-    
     return output
 html_generator.generate_cai_chat_html = generate_cai_chat_html
 
-def generate_chat_html(history, name1, name2, reset_cache=False):
-    output = f'<style>{chat_styles["wpp"]}</style><div class="chat wpp" id="chat"><div class="messages">'
+# def generate_chat_html(history, name1, name2, reset_cache=False):
+#     output = f'<style>{chat_styles["wpp"]}</style><div class="chat wpp" id="chat"><div class="messages">'
 
-    for i, _row in enumerate(history):
-        row = [convert_to_markdown_wrapped(entry, use_cache=i != len(history) - 1) for entry in _row]
+#     for i, _row in enumerate(history):
+#         row = [convert_to_markdown_wrapped(entry, use_cache=i != len(history) - 1) for entry in _row]
 
-        if row[0]:  # don't display empty user messages
-            try: current_pos, total_pos = get_message_positions(i, 0)
-            except: current_pos, total_pos = 0, 0
-            output += f"""
-              <div class="message" data-history-index="{i}" data-message-type="0">
-                <div class="text-you">
-                  <div class="message-body">
-                    {row[0]}
-                  </div>
-                  <div class="boogaplus-container">
-                    <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
-                      <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
-                      <div class="nav-pos">{current_pos+1}/{total_pos}</div>
-                      <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            """
+#         if row[0]:  # don't display empty user messages
+#             try: current_pos, total_pos = get_message_positions(i, 0)
+#             except: current_pos, total_pos = 0, 0
+#             output += f"""
+#               <div class="message" data-history-index="{i}" data-message-type="0">
+#                 <div class="text-you">
+#                   <div class="message-body">
+#                     {row[0]}
+#                   </div>
+#                   <div class="boogaplus-container">
+#                     <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+#                       <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+#                       <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+#                       <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+#                     </div>
+#                   </div>
+#                 </div>
+#               </div>
+#             """
 
-        try: current_pos, total_pos = get_message_positions(i, 1)
-        except: current_pos, total_pos = 0, 0
-        output += f"""
-          <div class="message" data-history-index="{i}" data-message-type="1">
-            <div class="text-bot">
-              <div class="message-body">
-                {row[1]}
-              </div>
-              <div class="boogaplus-container">
-                <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
-                  <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
-                  <div class="nav-pos">{current_pos+1}/{total_pos}</div>
-                  <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
-                </div>
-              </div>
-            </div>
-          </div>
-        """
+#         try: current_pos, total_pos = get_message_positions(i, 1)
+#         except: current_pos, total_pos = 0, 0
+#         output += f"""
+#           <div class="message" data-history-index="{i}" data-message-type="1">
+#             <div class="text-bot">
+#               <div class="message-body">
+#                 {row[1]}
+#               </div>
+#               <div class="boogaplus-container">
+#                 <div class="nav-container"{' hidden="true"' if total_pos <= 1 else ''}>
+#                   <button class="nav-arrow nav-left"{' activated="true"' if current_pos != 0 else ''}><</button>
+#                   <div class="nav-pos">{current_pos+1}/{total_pos}</div>
+#                   <button class="nav-arrow nav-right"{' activated="true"' if current_pos <= total_pos - 2 else ''}>></button>
+#                 </div>
+#               </div>
+#             </div>
+#           </div>
+#         """
 
-    output += "</div></div>"
-    return output
-html_generator.generate_chat_html = generate_chat_html
+#     output += "</div></div>"
+#     return output
+#html_generator.generate_chat_html = generate_chat_html
+
+generate_instruct_html = html_generator.generate_instruct_html
+generate_chat_html = html_generator.generate_chat_html
+def chat_html_wrapper(history, name1, name2, mode, style, character, unique_id='', reset_cache=False):
+    if mode == 'instruct':
+        return generate_instruct_html(history)
+    elif style == 'wpp':
+        return generate_chat_html(history, name1, name2)
+    else:
+        return generate_cai_chat_html(history, name1, name2, style, character, unique_id, reset_cache)
+html_generator.chat_html_wrapper = chat_html_wrapper
+
+def redraw_html(history, name1, name2, mode, style, character, unique_id='', reset_cache=False):
+    return chat_html_wrapper(history, name1, name2, mode, style, character, unique_id=unique_id, reset_cache=reset_cache)
+chat.redraw_html = redraw_html
